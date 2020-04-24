@@ -24,6 +24,7 @@
       <artifactId>wso2</artifactId>
       <version>1.1</version>
    </parent>
+
    <groupId>org.apache.synapse</groupId>
    <artifactId>Apache-Synapse</artifactId>
    <version>2.1.7-wso2v85</version>
