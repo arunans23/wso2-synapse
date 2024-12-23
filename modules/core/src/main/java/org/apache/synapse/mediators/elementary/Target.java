@@ -105,6 +105,8 @@ public class Target {
 
     public static final String ACTION_ADD_SIBLING = "sibling";
 
+    public static final String ACTION_PRESERVE_BODY = "preserveBody";
+
     private String action = ACTION_REPLACE;
 
     public static final String XPATH_PROPERTY_PATTERN = "'[^']*'";
@@ -175,26 +177,7 @@ public class Target {
             }
             removeOutdatedJsonStream(((Axis2MessageContext) synContext).getAxis2MessageContext());
         } else if (targetType == EnrichMediator.BODY) {
-            SOAPEnvelope env = synContext.getEnvelope();
-            SOAPBody body = env.getBody();
-
-            OMElement e = body.getFirstElement();
-
-            if (e != null) {
-                insertElementToBody(sourceNodeList, e, synLog, synContext);
-            } else {
-                // if the body is empty just add as a child
-                for (OMNode elem : sourceNodeList) {
-                    if (elem instanceof OMElement) {
-                        synchronized (elem){
-                            body.addChild(elem);
-                        }
-                    } else {
-                        synLog.error("Invalid Object type to be inserted into message body");
-                    }
-                }
-                removeOutdatedJsonStream(((Axis2MessageContext) synContext).getAxis2MessageContext());
-            }
+            insertBody(sourceNodeList, synLog, synContext);
         } else if (targetType == EnrichMediator.ENVELOPE) {
             OMNode node = sourceNodeList.get(0);
             if (node instanceof SOAPEnvelope) {
@@ -258,6 +241,31 @@ public class Target {
             } else {
                 synLog.error("Action " + action + " is not supported when enriching variables");
             }
+
+//            if (!((action.equalsIgnoreCase(ACTION_REPLACE) || action.equalsIgnoreCase(ACTION_PRESERVE_BODY)))) {
+//                synLog.error("Unsupported action : " + action + ". " +
+//                        "Only replace and preserveBody are supported for target variable.");
+//                return;
+//            }
+//            String key = variable.evaluateValue(synContext);
+//            if (StringUtils.isEmpty(key)) {
+//                synLog.error("Variable key cannot be null");
+//                throw new SynapseException("Variable key cannot be null");
+//            }
+//            Map<String, Object> result = new HashMap<>();
+//            Map transportHeaders = (Map)((Axis2MessageContext) synContext).getAxis2MessageContext()
+//                    .getProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS);
+//            JsonObject headers = EIPUtils.convertMapToJsonObj(transportHeaders);
+//            result.put(ExpressionConstants.HEADERS, headers);
+//            result.put(ExpressionConstants.ATTRIBUTES, CallMediatorEnrichUtil.populateTransportAttributes(synContext));
+//            synContext.setVariable(key, result);
+//            if (action.equalsIgnoreCase(ACTION_REPLACE)) {
+//                insertBody(sourceNodeList, synLog, synContext);
+//            } else if (action.equalsIgnoreCase(ACTION_PRESERVE_BODY)) {
+//                result.put(ExpressionConstants.PAYLOAD, sourceNodeList);
+//            } else {
+//                synLog.error("Action " + action + " is not supported when enriching variables");
+//            }
         } else {
             synLog.error("Invalid Target type");
             throw new SynapseException("Invalid Target type");
@@ -304,6 +312,37 @@ public class Target {
                     e.insertSiblingAfter(elem);
                 }
             }
+        }
+    }
+
+    /**
+     * Inserts the sourceNodeList to the body of the message.
+     *
+     * @param sourceNodeList Evaluated Json Element by the Source.
+     * @param synLog Default Logger for the package.
+     * @param synContext Current Message Context.
+     */
+    private void insertBody(ArrayList<OMNode> sourceNodeList, SynapseLog synLog,
+                            MessageContext synContext) {
+        SOAPEnvelope env = synContext.getEnvelope();
+        SOAPBody body = env.getBody();
+
+        OMElement e = body.getFirstElement();
+
+        if (e != null) {
+            insertElementToBody(sourceNodeList, e, synLog, synContext);
+        } else {
+            // if the body is empty just add as a child
+            for (OMNode elem : sourceNodeList) {
+                if (elem instanceof OMElement) {
+                    synchronized (elem){
+                        body.addChild(elem);
+                    }
+                } else {
+                    synLog.error("Invalid Object type to be inserted into message body");
+                }
+            }
+            removeOutdatedJsonStream(((Axis2MessageContext) synContext).getAxis2MessageContext());
         }
     }
 
@@ -489,20 +528,55 @@ public class Target {
                 break;
             }
             case EnrichMediator.VARIABLE:
+//                if (action.equalsIgnoreCase(ACTION_REPLACE)) {
+//                    String key = variable.evaluateValue(synCtx);
+//                    if (StringUtils.isEmpty(key)) {
+//                        synLog.error("Variable key cannot be null");
+//                        return;
+//                    }
+//                    Map<String, Object> result = new HashMap<>();
+//                    result.put(ExpressionConstants.PAYLOAD, sourceJsonElement);
+//                    Map transportHeaders = (Map)((Axis2MessageContext) synCtx).getAxis2MessageContext()
+//                            .getProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS);
+//                    JsonObject headers = EIPUtils.convertMapToJsonObj(transportHeaders);
+//                    result.put(ExpressionConstants.HEADERS, headers);
+//                    result.put(ExpressionConstants.ATTRIBUTES, CallMediatorEnrichUtil.populateTransportAttributes(synCtx));
+//                    synCtx.setVariable(key, result);
+//                }
+                if (!((action.equalsIgnoreCase(ACTION_REPLACE) || action.equalsIgnoreCase(ACTION_PRESERVE_BODY)))) {
+                    synLog.error("Unsupported action : " + action + ". " +
+                            "Only replace and preserveBody are supported for target variable.");
+                    return;
+                }
+                String key = variable.evaluateValue(synCtx);
+                if (StringUtils.isEmpty(key)) {
+                    synLog.error("Variable key cannot be null");
+                    return;
+                }
+                Map<String, Object> result = new HashMap<>();
+                Map transportHeaders = (Map)((Axis2MessageContext) synCtx).getAxis2MessageContext()
+                        .getProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS);
+                JsonObject headers = EIPUtils.convertMapToJsonObj(transportHeaders);
+                result.put(ExpressionConstants.HEADERS, headers);
+                result.put(ExpressionConstants.ATTRIBUTES, CallMediatorEnrichUtil.populateTransportAttributes(synCtx));
+                synCtx.setVariable(key, result);
                 if (action.equalsIgnoreCase(ACTION_REPLACE)) {
-                    String key = variable.evaluateValue(synCtx);
-                    if (StringUtils.isEmpty(key)) {
-                        synLog.error("Variable key cannot be null");
-                        return;
+                    try {
+                        String jsonString = sourceJsonElement.toString();
+                        JsonElement element = jsonParser.parse(jsonString);
+                        if (element instanceof JsonObject || element instanceof JsonArray) {
+                            JsonUtil.getNewJsonPayload(((Axis2MessageContext) synCtx).
+                                    getAxis2MessageContext(), jsonString, true, true);
+                        } else {
+                            synLog.error("Unsupported JSON payload : " + jsonString
+                                    + ".Only JSON arrays and objects can be enriched to the body");
+                        }
+
+                    } catch (AxisFault axisFault) {
+                        synLog.error("Error occurred while adding a new JSON payload");
                     }
-                    Map<String, Object> result = new HashMap<>();
+                } else if (action.equalsIgnoreCase(ACTION_PRESERVE_BODY)) {
                     result.put(ExpressionConstants.PAYLOAD, sourceJsonElement);
-                    Map transportHeaders = (Map)((Axis2MessageContext) synCtx).getAxis2MessageContext()
-                            .getProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS);
-                    JsonObject headers = EIPUtils.convertMapToJsonObj(transportHeaders);
-                    result.put(ExpressionConstants.HEADERS, headers);
-                    result.put(ExpressionConstants.ATTRIBUTES, CallMediatorEnrichUtil.populateTransportAttributes(synCtx));
-                    synCtx.setVariable(key, result);
                 }
                 break;
             default: {

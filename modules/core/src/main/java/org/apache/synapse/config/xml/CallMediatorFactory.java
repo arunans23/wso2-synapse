@@ -91,6 +91,7 @@ public class CallMediatorFactory extends AbstractMediatorFactory {
     public static final QName SOURCE_Q = new QName(XMLConfigConstants.SYNAPSE_NAMESPACE, "source");
     public static final QName TARGET_Q = new QName(XMLConfigConstants.SYNAPSE_NAMESPACE, "target");
     private static final QName ATT_TYPE = new QName("type");
+    private static final QName ATT_ACTION = new QName("action");
     private static final QName CONTENT_TYPE = new QName("contentType");
 
     public Mediator createSpecificMediator(OMElement elem, Properties properties) {
@@ -238,6 +239,15 @@ public class CallMediatorFactory extends AbstractMediatorFactory {
         } else if (target.getTargetType() == EnrichMediator.BODY) {
             callMediator.setTargetAvailable(false);
         } else if (target.getTargetType() == EnrichMediator.VARIABLE) {
+            String action = sourceEle.getAttributeValue(ATT_ACTION);
+            if (action != null) {
+                if (action.equalsIgnoreCase(Target.ACTION_REPLACE) || action.equalsIgnoreCase(Target.ACTION_PRESERVE_BODY)) {
+                    target.setAction(action);
+                } else {
+                    handleException("Invalid action : " + action + " for VARIABLE type");
+                }
+                target.setAction(action);
+            }
             // check if variable is surrounded by curly braces
             if (StringUtils.isNotEmpty(sourceEle.getText())) {
                 callMediator.setTargetAvailable(true);

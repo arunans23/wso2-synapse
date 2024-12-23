@@ -62,6 +62,7 @@ import org.apache.synapse.inbound.InboundEndpointStatisticsCloseEventListener;
 import org.apache.synapse.mediators.MediatorFaultHandler;
 import org.apache.synapse.mediators.MediatorWorker;
 import org.apache.synapse.mediators.base.SequenceMediator;
+import org.apache.synapse.mediators.elementary.EnrichMediator;
 import org.apache.synapse.mediators.elementary.Source;
 import org.apache.synapse.mediators.elementary.Target;
 import org.apache.synapse.rest.RESTRequestHandler;
@@ -860,7 +861,12 @@ public class Axis2SynapseEnvironment implements SynapseEnvironment {
             CallMediatorEnrichUtil
                     .doEnrich(response, sourceForResponsePayload, targetForInboundPayload, sourceMessageType);
             CallMediatorEnrichUtil
-                    .doEnrich(response, sourceForOriginalPayload, targetForResponsePayload, originalMessageType);
+                        .doEnrich(response, sourceForOriginalPayload, targetForResponsePayload, originalMessageType);
+            if (!(EnrichMediator.VARIABLE == targetForInboundPayload.getTargetType() &&
+                    Target.ACTION_REPLACE.equalsIgnoreCase(targetForInboundPayload.getAction()))) {
+                CallMediatorEnrichUtil
+                        .doEnrich(response, sourceForOriginalPayload, targetForResponsePayload, originalMessageType);
+            }
             CallMediatorEnrichUtil.preservetransportHeaders(response, originalTransportHeaders);
             if (!sourceMessageType.equalsIgnoreCase(originalMessageType)) {
                 CallMediatorEnrichUtil.setContentType(response, originalMessageType, originalContentType);
