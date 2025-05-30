@@ -1,0 +1,24 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "pattern": ".*\\.yml"
+      },
+      {
+        "pattern": ".*\\.yaml"
+      },
+      {
+        "pattern": ".*\\.properties"
+      },
+      {
+        "pattern": ".*\\.xml"
+      },
+      {
+        "pattern": ".*\\.json"
+      },
+      {
+        "pattern": "META-INF/.*"
+      }
+    ]
+  }
+}

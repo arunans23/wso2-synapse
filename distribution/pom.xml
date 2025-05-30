@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.wso2.graalvm</groupId>
+        <artifactId>micro-integrator</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>micro-integrator-distribution</artifactId>
+    <name>WSO2 Micro Integrator - Distribution</name>
+    <description>Distribution package for the GraalVM-based Micro Integrator</description>
+
+    <dependencies>
+        <!-- All Internal Modules -->
+        <dependency>
+            <groupId>org.wso2.graalvm</groupId>
+            <artifactId>micro-integrator-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.wso2.graalvm</groupId>
+            <artifactId>micro-integrator-runtime</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.wso2.graalvm</groupId>
+            <artifactId>micro-integrator-engine</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.wso2.graalvm</groupId>
+            <artifactId>micro-integrator-mediators</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.wso2.graalvm</groupId>
+            <artifactId>micro-integrator-transports</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.wso2.graalvm</groupId>
+            <artifactId>micro-integrator-management</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.wso2.graalvm</groupId>
+            <artifactId>micro-integrator-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.wso2.graalvm</groupId>
+            <artifactId>micro-integrator-cli</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>3.2.4</version>
+                <configuration>
+                    <mainClass>org.wso2.graalvm.runtime.MicroIntegratorApplication</mainClass>
+                    <finalName>wso2-micro-integrator-graalvm</finalName>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.7.1</version>
+                <configuration>
+                    <descriptors>
+                        <descriptor>src/main/assembly/distribution.xml</descriptor>
+                    </descriptors>
+                    <finalName>wso2-micro-integrator-graalvm-${project.version}</finalName>
+                    <appendAssemblyId>false</appendAssemblyId>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-assembly</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>native</id>
+            <build>
+                <plugins>
+                    <!-- Extract Spring Boot JAR for native compilation -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>extract-boot-jar</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <unzip src="${project.build.directory}/wso2-micro-integrator-graalvm.jar" 
+                                               dest="${project.build.directory}/native-image-build" />
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    
+                    <plugin>
+                        <groupId>org.graalvm.buildtools</groupId>
+                        <artifactId>native-maven-plugin</artifactId>
+                        <configuration>
+                            <imageName>wso2-micro-integrator</imageName>
+                            <mainClass>org.wso2.graalvm.runtime.MicroIntegratorApplication</mainClass>
+                            <buildArgs>
+                                <buildArg>--no-fallback</buildArg>
+                                <buildArg>--install-exit-handlers</buildArg>
+                                <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+                                <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
+                                <buildArg>--initialize-at-build-time=org.slf4j</buildArg>
+                                <buildArg>--initialize-at-run-time=io.netty</buildArg>
+                                <buildArg>--enable-url-protocols=http,https</buildArg>
+                                <buildArg>--enable-all-security-services</buildArg>
+                                <buildArg>-cp</buildArg>
+                                <buildArg>${project.build.directory}/native-image-build/BOOT-INF/lib/*:${project.build.directory}/native-image-build/BOOT-INF/classes</buildArg>
+                                <buildArg>-H:ResourceConfigurationFiles=${project.build.directory}/native-image-build/BOOT-INF/classes/resource-config.json</buildArg>
+                                <buildArg>-H:ReflectionConfigurationFiles=${project.build.directory}/native-image-build/BOOT-INF/classes/reflect-config.json</buildArg>
+                            </buildArgs>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>build-native</id>
+                                <goals>
+                                    <goal>compile-no-fork</goal>
+                                </goals>
+                                <phase>package</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

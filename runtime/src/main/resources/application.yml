@@ -1,0 +1,46 @@
+server:
+  host: localhost
+  port: 8290
+  httpsPort: 8253
+  managementPort: 9164
+
+threading:
+  virtualThreads: true
+  maxWorkerThreads: 100
+  taskQueueSize: 1000
+
+transports:
+  http:
+    enabled: true
+    properties:
+      maxConnections: 1000
+      connectionTimeout: 30000
+  https:
+    enabled: false
+    properties:
+      keyStore: keystore.jks
+      keyStorePassword: password
+      trustStore: truststore.jks
+      trustStorePassword: password
+
+mediators:
+  enabledMediators:
+    - log
+    - property
+    - send
+    - respond
+    - call
+    - transform
+  customMediators: {}
+
+security:
+  enableSecurity: false
+  keyStore: null
+  trustStore: null
+
+management:
+  enabled: true
+  endpoints:
+    - health
+    - metrics
+    - info

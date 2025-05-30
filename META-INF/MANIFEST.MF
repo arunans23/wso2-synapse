@@ -1,0 +1,13 @@
+Manifest-Version: 1.0
+Archiver-Version: Plexus Archiver
+Created-By: Apache Maven 3.6.3
+Built-By: arunan
+Build-Jdk: 21.0.7
+Main-Class: org.springframework.boot.loader.launch.JarLauncher
+Start-Class: org.wso2.graalvm.runtime.MicroIntegratorApplication
+Spring-Boot-Version: 3.2.4
+Spring-Boot-Classes: BOOT-INF/classes/
+Spring-Boot-Lib: BOOT-INF/lib/
+Spring-Boot-Classpath-Index: BOOT-INF/classpath.idx
+Spring-Boot-Layers-Index: BOOT-INF/layers.idx
+
