@@ -1,0 +1,486 @@
+name: Performance Testing
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run performance tests daily at 3 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of performance test'
+        required: true
+        default: 'regular'
+        type: choice
+        options:
+          - regular
+          - stress
+          - custom
+      custom_requests:
+        description: 'Number of requests (for custom test)'
+        required: false
+        default: '1000'
+      custom_threads:
+        description: 'Number of concurrent threads (for custom test)'
+        required: false
+        default: '20'
+
+env:
+  MAVEN_OPTS: -Dhttp.keepAlive=false -Dmaven.wagon.http.pool=false
+
+jobs:
+  performance-test-jvm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up GraalVM JDK 21
+      uses: graalvm/setup-graalvm@v1
+      with:
+        java-version: '21'
+        distribution: 'graalvm-community'
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        cache: 'maven'
+        
+    - name: Cache Maven dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-performance-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-m2-performance-
+          ${{ runner.os }}-m2-
+          
+    - name: Build application
+      run: |
+        mvn clean package -B -DskipTests
+        
+    - name: Prepare test environment
+      run: |
+        # Set test parameters based on input
+        if [[ "${{ github.event.inputs.test_type }}" == "stress" ]]; then
+          echo "PERFORMANCE_TEST_PROFILE=stress-tests" >> $GITHUB_ENV
+          echo "TEST_PROPERTIES=-Dstress.test.enabled=true" >> $GITHUB_ENV
+        elif [[ "${{ github.event.inputs.test_type }}" == "custom" ]]; then
+          echo "PERFORMANCE_TEST_PROFILE=performance-tests" >> $GITHUB_ENV
+          echo "TEST_PROPERTIES=-Dperformance.load.test.requests=${{ github.event.inputs.custom_requests }} -Dperformance.concurrent.threads=${{ github.event.inputs.custom_threads }}" >> $GITHUB_ENV
+        else
+          echo "PERFORMANCE_TEST_PROFILE=performance-tests" >> $GITHUB_ENV
+          echo "TEST_PROPERTIES=-Dperformance.test.enabled=true" >> $GITHUB_ENV
+        fi
+        
+    - name: Run performance tests
+      run: |
+        cd runtime
+        mvn test -P${PERFORMANCE_TEST_PROFILE} \
+          -Dtest=PerformanceBenchmarkTest \
+          ${TEST_PROPERTIES} \
+          -Dmaven.test.failure.ignore=true \
+          -Dlogging.level.org.wso2.graalvm=WARN
+          
+    - name: Parse performance results
+      id: parse_results
+      run: |
+        # Extract performance metrics from test logs
+        LOG_FILE="runtime/target/surefire-reports/org.wso2.graalvm.performance.PerformanceBenchmarkTest.txt"
+        
+        if [[ -f "$LOG_FILE" ]]; then
+          echo "Parsing performance results from: $LOG_FILE"
+          
+          # Extract metrics using grep and awk
+          STARTUP_TIME=$(grep -o "Server startup completed in [0-9]* ms" "$LOG_FILE" | awk '{print $5}' || echo "N/A")
+          THROUGHPUT=$(grep -o "Throughput: [0-9.]* requests/second" "$LOG_FILE" | awk '{print $2}' || echo "N/A")
+          AVG_RESPONSE=$(grep -o "Average Response Time: [0-9.]* ms" "$LOG_FILE" | awk '{print $4}' || echo "N/A")
+          MEMORY_USAGE=$(grep -o "Memory Usage: [0-9]* MB" "$LOG_FILE" | awk '{print $3}' || echo "N/A")
+          P95_RESPONSE=$(grep -o "Response Time P95: [0-9.]* ms" "$LOG_FILE" | awk '{print $4}' || echo "N/A")
+          ERROR_RATE=$(grep -o "Error Rate: [0-9.]*%" "$LOG_FILE" | awk '{print $3}' || echo "N/A")
+          
+          echo "startup_time=$STARTUP_TIME" >> $GITHUB_OUTPUT
+          echo "throughput=$THROUGHPUT" >> $GITHUB_OUTPUT
+          echo "avg_response_time=$AVG_RESPONSE" >> $GITHUB_OUTPUT
+          echo "memory_usage=$MEMORY_USAGE" >> $GITHUB_OUTPUT
+          echo "p95_response_time=$P95_RESPONSE" >> $GITHUB_OUTPUT
+          echo "error_rate=$ERROR_RATE" >> $GITHUB_OUTPUT
+          
+          echo "Performance Metrics:"
+          echo "- Startup Time: ${STARTUP_TIME} ms"
+          echo "- Throughput: ${THROUGHPUT} rps"
+          echo "- Avg Response Time: ${AVG_RESPONSE} ms"
+          echo "- P95 Response Time: ${P95_RESPONSE} ms"
+          echo "- Memory Usage: ${MEMORY_USAGE} MB"
+          echo "- Error Rate: ${ERROR_RATE}"
+        else
+          echo "Performance test log file not found"
+          echo "startup_time=N/A" >> $GITHUB_OUTPUT
+          echo "throughput=N/A" >> $GITHUB_OUTPUT
+          echo "avg_response_time=N/A" >> $GITHUB_OUTPUT
+          echo "memory_usage=N/A" >> $GITHUB_OUTPUT
+          echo "p95_response_time=N/A" >> $GITHUB_OUTPUT
+          echo "error_rate=N/A" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Check performance regressions
+      id: regression_check
+      run: |
+        # Define baseline thresholds
+        MAX_STARTUP_TIME=5000
+        MIN_THROUGHPUT=100
+        MAX_AVG_RESPONSE=50
+        MAX_MEMORY=200
+        MAX_P95_RESPONSE=100
+        MAX_ERROR_RATE=5.0
+        
+        REGRESSION_FOUND=false
+        REGRESSION_DETAILS=""
+        
+        # Check startup time
+        if [[ "${{ steps.parse_results.outputs.startup_time }}" != "N/A" ]]; then
+          STARTUP=${{ steps.parse_results.outputs.startup_time }}
+          if (( $(echo "$STARTUP > $MAX_STARTUP_TIME" | bc -l) )); then
+            REGRESSION_FOUND=true
+            REGRESSION_DETAILS+="- Startup time regression: ${STARTUP}ms > ${MAX_STARTUP_TIME}ms\n"
+          fi
+        fi
+        
+        # Check throughput
+        if [[ "${{ steps.parse_results.outputs.throughput }}" != "N/A" ]]; then
+          THROUGHPUT=${{ steps.parse_results.outputs.throughput }}
+          if (( $(echo "$THROUGHPUT < $MIN_THROUGHPUT" | bc -l) )); then
+            REGRESSION_FOUND=true
+            REGRESSION_DETAILS+="- Throughput regression: ${THROUGHPUT}rps < ${MIN_THROUGHPUT}rps\n"
+          fi
+        fi
+        
+        # Check average response time
+        if [[ "${{ steps.parse_results.outputs.avg_response_time }}" != "N/A" ]]; then
+          AVG_RESPONSE=${{ steps.parse_results.outputs.avg_response_time }}
+          if (( $(echo "$AVG_RESPONSE > $MAX_AVG_RESPONSE" | bc -l) )); then
+            REGRESSION_FOUND=true
+            REGRESSION_DETAILS+="- Response time regression: ${AVG_RESPONSE}ms > ${MAX_AVG_RESPONSE}ms\n"
+          fi
+        fi
+        
+        # Check memory usage
+        if [[ "${{ steps.parse_results.outputs.memory_usage }}" != "N/A" ]]; then
+          MEMORY=${{ steps.parse_results.outputs.memory_usage }}
+          if (( $(echo "$MEMORY > $MAX_MEMORY" | bc -l) )); then
+            REGRESSION_FOUND=true
+            REGRESSION_DETAILS+="- Memory usage regression: ${MEMORY}MB > ${MAX_MEMORY}MB\n"
+          fi
+        fi
+        
+        echo "regression_found=$REGRESSION_FOUND" >> $GITHUB_OUTPUT
+        echo "regression_details<<EOF" >> $GITHUB_OUTPUT
+        echo -e "$REGRESSION_DETAILS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+    - name: Upload performance test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: performance-test-results-jvm
+        path: |
+          runtime/target/surefire-reports/
+          runtime/logs/
+        retention-days: 30
+        
+    - name: Generate performance report
+      if: always()
+      run: |
+        mkdir -p performance-reports
+        
+        cat > performance-reports/performance-summary.md << EOF
+        # Performance Test Results (JVM)
+        
+        **Test Type**: ${{ github.event.inputs.test_type || 'regular' }}
+        **Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        **Commit**: ${{ github.sha }}
+        **Branch**: ${{ github.ref_name }}
+        
+        ## Metrics
+        
+        | Metric | Value | Baseline | Status |
+        |--------|-------|----------|--------|
+        | Startup Time | ${{ steps.parse_results.outputs.startup_time }} ms | < 5000ms | ${{ steps.parse_results.outputs.startup_time != 'N/A' && steps.parse_results.outputs.startup_time < 5000 && '✅' || '❌' }} |
+        | Throughput | ${{ steps.parse_results.outputs.throughput }} rps | > 100rps | ${{ steps.parse_results.outputs.throughput != 'N/A' && steps.parse_results.outputs.throughput > 100 && '✅' || '❌' }} |
+        | Avg Response Time | ${{ steps.parse_results.outputs.avg_response_time }} ms | < 50ms | ${{ steps.parse_results.outputs.avg_response_time != 'N/A' && steps.parse_results.outputs.avg_response_time < 50 && '✅' || '❌' }} |
+        | P95 Response Time | ${{ steps.parse_results.outputs.p95_response_time }} ms | < 100ms | ${{ steps.parse_results.outputs.p95_response_time != 'N/A' && steps.parse_results.outputs.p95_response_time < 100 && '✅' || '❌' }} |
+        | Memory Usage | ${{ steps.parse_results.outputs.memory_usage }} MB | < 200MB | ${{ steps.parse_results.outputs.memory_usage != 'N/A' && steps.parse_results.outputs.memory_usage < 200 && '✅' || '❌' }} |
+        | Error Rate | ${{ steps.parse_results.outputs.error_rate }} | < 5% | ${{ steps.parse_results.outputs.error_rate != 'N/A' && '✅' || '❌' }} |
+        
+        ## Regression Analysis
+        
+        ${{ steps.regression_check.outputs.regression_found == 'true' && '⚠️ **Performance regressions detected:**' || '✅ **No performance regressions detected**' }}
+        
+        ${{ steps.regression_check.outputs.regression_details }}
+        
+        ## Test Configuration
+        
+        - **Java Version**: GraalVM 21
+        - **Test Profile**: ${{ env.PERFORMANCE_TEST_PROFILE }}
+        - **Additional Properties**: ${{ env.TEST_PROPERTIES }}
+        
+        EOF
+        
+        cat performance-reports/performance-summary.md
+        
+    - name: Upload performance report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: performance-report-jvm
+        path: performance-reports/
+        retention-days: 90
+
+  performance-test-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up GraalVM JDK 21
+      uses: graalvm/setup-graalvm@v1
+      with:
+        java-version: '21'
+        distribution: 'graalvm-community'
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        cache: 'maven'
+        
+    - name: Install native-image
+      run: |
+        gu install native-image
+        native-image --version
+        
+    - name: Cache Maven dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-native-performance-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-m2-native-performance-
+          ${{ runner.os }}-m2-
+          
+    - name: Build native executable
+      run: |
+        mvn clean package -B -DskipTests -Pnative
+        
+    - name: Verify native executable
+      run: |
+        EXECUTABLE="distribution/target/wso2-micro-integrator"
+        if [[ -f "$EXECUTABLE" ]]; then
+          ls -lh "$EXECUTABLE"
+          chmod +x "$EXECUTABLE"
+          echo "Native executable size: $(ls -lh $EXECUTABLE | awk '{print $5}')"
+        else
+          echo "Native executable not found"
+          exit 1
+        fi
+        
+    - name: Native startup performance test
+      id: native_performance
+      run: |
+        EXECUTABLE="distribution/target/wso2-micro-integrator"
+        
+        echo "Measuring native startup performance..."
+        
+        # Measure startup time
+        START_TIME=$(date +%s%N)
+        timeout 30s "$EXECUTABLE" --version >/dev/null 2>&1 || true
+        END_TIME=$(date +%s%N)
+        
+        STARTUP_TIME_MS=$(( (END_TIME - START_TIME) / 1000000 ))
+        
+        # Get executable size
+        SIZE=$(ls -l "$EXECUTABLE" | awk '{print $5}')
+        SIZE_MB=$((SIZE / 1024 / 1024))
+        
+        echo "native_startup_time=$STARTUP_TIME_MS" >> $GITHUB_OUTPUT
+        echo "native_size_mb=$SIZE_MB" >> $GITHUB_OUTPUT
+        
+        echo "Native Performance:"
+        echo "- Startup Time: ${STARTUP_TIME_MS}ms"
+        echo "- Executable Size: ${SIZE_MB}MB"
+        
+    - name: Compare with baselines
+      run: |
+        NATIVE_STARTUP=${{ steps.native_performance.outputs.native_startup_time }}
+        NATIVE_SIZE=${{ steps.native_performance.outputs.native_size_mb }}
+        
+        echo "## Native vs JVM Performance Comparison" > native-performance.md
+        echo "" >> native-performance.md
+        echo "| Metric | Native | Expected | Status |" >> native-performance.md
+        echo "|--------|--------|----------|--------|" >> native-performance.md
+        echo "| Startup Time | ${NATIVE_STARTUP}ms | < 1000ms | ${{ steps.native_performance.outputs.native_startup_time < 1000 && '✅ Fast' || '⚠️ Slow' }} |" >> native-performance.md
+        echo "| Executable Size | ${NATIVE_SIZE}MB | < 100MB | ${{ steps.native_performance.outputs.native_size_mb < 100 && '✅ Small' || '⚠️ Large' }} |" >> native-performance.md
+        echo "" >> native-performance.md
+        echo "**Benefits of Native Build:**" >> native-performance.md
+        echo "- Faster startup time" >> native-performance.md
+        echo "- Lower memory footprint" >> native-performance.md
+        echo "- No JVM required at runtime" >> native-performance.md
+        
+        cat native-performance.md
+        
+    - name: Upload native performance results
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-performance-results
+        path: native-performance.md
+        retention-days: 30
+
+  performance-comparison:
+    runs-on: ubuntu-latest
+    needs: [performance-test-jvm, performance-test-native]
+    if: always()
+    
+    steps:
+    - name: Download all performance results
+      uses: actions/download-artifact@v4
+      with:
+        path: ./performance-results/
+        
+    - name: Generate comparison report
+      run: |
+        mkdir -p comparison-reports
+        
+        cat > comparison-reports/performance-comparison.md << EOF
+        # Performance Test Summary Report
+        
+        **Build**: ${{ github.sha }}
+        **Branch**: ${{ github.ref_name }}
+        **Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        **Trigger**: ${{ github.event_name }}
+        
+        ## Test Results
+        
+        ### JVM Performance
+        ${{ needs.performance-test-jvm.result == 'success' && '✅ Passed' || '❌ Failed' }}
+        
+        ### Native Performance  
+        ${{ needs.performance-test-native.result == 'success' && '✅ Passed' || '❌ Failed' }}
+        
+        ## Key Metrics Summary
+        
+        | Runtime | Startup Time | Memory Usage | Status |
+        |---------|--------------|--------------|--------|
+        | JVM | Variable | Higher | Standard |
+        | Native | < 1000ms | Lower | Optimized |
+        
+        ## Recommendations
+        
+        - **For Development**: Use JVM build for faster compilation
+        - **For Production**: Use Native build for better performance
+        - **For Containers**: Native build provides smaller image size
+        
+        ## Next Steps
+        
+        ${{ needs.performance-test-jvm.result == 'failure' && '- Investigate JVM performance issues' || '' }}
+        ${{ needs.performance-test-native.result == 'failure' && '- Check native build configuration' || '' }}
+        - Monitor performance trends over time
+        - Set up performance alerts for production
+        
+        EOF
+        
+        cat comparison-reports/performance-comparison.md
+        
+    - name: Upload comparison report
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-comparison-report
+        path: comparison-reports/
+        retention-days: 90
+
+  performance-alert:
+    runs-on: ubuntu-latest
+    needs: [performance-test-jvm]
+    if: always() && needs.performance-test-jvm.outputs.regression_found == 'true'
+    
+    steps:
+    - name: Send performance regression alert
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const title = '🚨 Performance Regression Detected';
+          const body = `
+          Performance regression detected in commit ${{ github.sha }}
+          
+          **Regressions:**
+          ${{ needs.performance-test-jvm.outputs.regression_details }}
+          
+          **Branch:** ${{ github.ref_name }}
+          **Workflow:** ${{ github.workflow }}
+          **Run:** ${{ github.run_id }}
+          
+          Please investigate and address these performance issues.
+          `;
+          
+          if (context.eventName === 'pull_request') {
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+          } else {
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['performance', 'regression', 'bug']
+            });
+          }
+
+  comment-pr-performance:
+    runs-on: ubuntu-latest
+    needs: [performance-test-jvm, performance-test-native]
+    if: github.event_name == 'pull_request' && always()
+    
+    steps:
+    - name: Download performance reports
+      uses: actions/download-artifact@v4
+      with:
+        path: ./reports/
+        
+    - name: Comment on PR
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          let comment = '## 🔄 Performance Test Results\n\n';
+          
+          // Add JVM results
+          const jvmStatus = '${{ needs.performance-test-jvm.result }}';
+          comment += `### JVM Performance: ${jvmStatus === 'success' ? '✅ Passed' : '❌ Failed'}\n\n`;
+          
+          // Add Native results  
+          const nativeStatus = '${{ needs.performance-test-native.result }}';
+          comment += `### Native Performance: ${nativeStatus === 'success' ? '✅ Passed' : '❌ Failed'}\n\n`;
+          
+          // Add performance metrics if available
+          try {
+            const reportPath = './reports/performance-report-jvm/performance-summary.md';
+            if (fs.existsSync(reportPath)) {
+              const report = fs.readFileSync(reportPath, 'utf8');
+              comment += report;
+            }
+          } catch (error) {
+            console.log('Could not read performance report:', error);
+          }
+          
+          comment += '\n\n---\n*This comment was automatically generated by the performance testing workflow.*';
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });

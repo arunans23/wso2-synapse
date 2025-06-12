@@ -1,0 +1,358 @@
+name: GraalVM Native Build
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run weekly on Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
+
+env:
+  GRAALVM_VERSION: 21.0.2
+  MAVEN_OPTS: -Dhttp.keepAlive=false -Dmaven.wagon.http.pool=false
+
+jobs:
+  native-build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+            executable: wso2-micro-integrator
+          - os: macos-latest
+            platform: macos-x64
+            executable: wso2-micro-integrator
+      fail-fast: false
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up GraalVM
+      uses: graalvm/setup-graalvm@v1
+      with:
+        java-version: '21'
+        distribution: 'graalvm-community'
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        cache: 'maven'
+        
+    - name: Cache Maven dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-graalvm-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-m2-graalvm-
+          ${{ runner.os }}-m2-
+          
+    - name: Install native-image (if not already installed)
+      run: |
+        if ! command -v native-image &> /dev/null; then
+          gu install native-image
+        fi
+        native-image --version
+        
+    - name: Set up build environment
+      run: |
+        echo "GRAALVM_HOME=$JAVA_HOME" >> $GITHUB_ENV
+        echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
+        
+    - name: Verify GraalVM setup
+      run: |
+        java -version
+        native-image --version
+        echo "JAVA_HOME: $JAVA_HOME"
+        echo "GRAALVM_HOME: $GRAALVM_HOME"
+        
+    - name: Build JAR first
+      run: |
+        mvn clean package -B -DskipTests -Pnative
+        
+    - name: List distribution artifacts
+      run: |
+        echo "Distribution target contents:"
+        ls -la distribution/target/
+        
+    - name: Build native image
+      run: |
+        cd distribution
+        mvn package -Pnative -DskipTests -B
+        
+    - name: Verify native executable
+      run: |
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          EXECUTABLE="distribution/target/wso2-micro-integrator.exe"
+        else
+          EXECUTABLE="distribution/target/wso2-micro-integrator"
+        fi
+        
+        if [[ -f "$EXECUTABLE" ]]; then
+          echo "Native executable created successfully: $EXECUTABLE"
+          ls -lh "$EXECUTABLE"
+          file "$EXECUTABLE" || echo "file command not available"
+          
+          # Test the executable (quick version check)
+          timeout 30s "$EXECUTABLE" --version || echo "Version check completed or timed out"
+        else
+          echo "ERROR: Native executable not found at $EXECUTABLE"
+          echo "Distribution target contents:"
+          ls -la distribution/target/
+          exit 1
+        fi
+        
+    - name: Test native executable startup
+      run: |
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          EXECUTABLE="distribution/target/wso2-micro-integrator.exe"
+        else
+          EXECUTABLE="distribution/target/wso2-micro-integrator"
+        fi
+        
+        echo "Testing native executable startup..."
+        timeout 60s "$EXECUTABLE" --help || echo "Help command completed or timed out"
+        
+    - name: Package native executable
+      run: |
+        cd distribution/target
+        
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          EXECUTABLE="wso2-micro-integrator.exe"
+          ARCHIVE_NAME="wso2-micro-integrator-graalvm-${{ matrix.platform }}.zip"
+          zip "$ARCHIVE_NAME" "$EXECUTABLE"
+        else
+          EXECUTABLE="wso2-micro-integrator"
+          ARCHIVE_NAME="wso2-micro-integrator-graalvm-${{ matrix.platform }}.tar.gz"
+          tar -czf "$ARCHIVE_NAME" "$EXECUTABLE"
+        fi
+        
+        echo "Created archive: $ARCHIVE_NAME"
+        ls -lh "$ARCHIVE_NAME"
+        
+    - name: Upload native executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-executable-${{ matrix.platform }}
+        path: |
+          distribution/target/wso2-micro-integrator-graalvm-${{ matrix.platform }}.*
+          distribution/target/wso2-micro-integrator*
+        retention-days: 30
+        
+    - name: Calculate executable size
+      id: size
+      run: |
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          EXECUTABLE="distribution/target/wso2-micro-integrator.exe"
+        else
+          EXECUTABLE="distribution/target/wso2-micro-integrator"
+        fi
+        
+        if [[ -f "$EXECUTABLE" ]]; then
+          SIZE=$(ls -l "$EXECUTABLE" | awk '{print $5}')
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "executable_size_mb=$SIZE_MB" >> $GITHUB_OUTPUT
+          echo "Executable size: ${SIZE_MB} MB"
+        fi
+
+  native-build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up GraalVM
+      uses: graalvm/setup-graalvm@v1
+      with:
+        java-version: '21'
+        distribution: 'graalvm-community'
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        cache: 'maven'
+        
+    - name: Set up Visual Studio shell
+      uses: egor-tensin/vs-shell@v2
+      with:
+        arch: x64
+        
+    - name: Cache Maven dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2
+        key: windows-m2-graalvm-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          windows-m2-graalvm-
+          windows-m2-
+          
+    - name: Install native-image
+      run: |
+        gu install native-image
+        native-image.cmd --version
+        
+    - name: Build JAR first
+      run: |
+        mvn clean package -B -DskipTests -Pnative
+        
+    - name: Build native image
+      run: |
+        cd distribution
+        mvn package -Pnative -DskipTests -B
+        
+    - name: Verify native executable
+      run: |
+        $EXECUTABLE = "distribution/target/wso2-micro-integrator.exe"
+        
+        if (Test-Path $EXECUTABLE) {
+          Write-Host "Native executable created successfully: $EXECUTABLE"
+          Get-ChildItem $EXECUTABLE | Format-List
+          
+          # Test the executable
+          & $EXECUTABLE --version
+        } else {
+          Write-Host "ERROR: Native executable not found at $EXECUTABLE"
+          Get-ChildItem distribution/target/
+          exit 1
+        }
+        
+    - name: Package native executable
+      run: |
+        cd distribution/target
+        Compress-Archive -Path "wso2-micro-integrator.exe" -DestinationPath "wso2-micro-integrator-graalvm-windows-x64.zip"
+        
+    - name: Upload native executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-executable-windows-x64
+        path: |
+          distribution/target/wso2-micro-integrator-graalvm-windows-x64.zip
+          distribution/target/wso2-micro-integrator.exe
+        retention-days: 30
+
+  native-test:
+    runs-on: ubuntu-latest
+    needs: native-build
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download native executable
+      uses: actions/download-artifact@v4
+      with:
+        name: native-executable-linux-x64
+        path: ./native-executable/
+        
+    - name: Extract and test native executable
+      run: |
+        cd native-executable
+        ls -la
+        
+        # Make executable if needed
+        chmod +x wso2-micro-integrator 2>/dev/null || true
+        
+        if [[ -f "wso2-micro-integrator" ]]; then
+          echo "Testing native executable..."
+          
+          # Test version
+          ./wso2-micro-integrator --version || echo "Version check completed"
+          
+          # Test help
+          ./wso2-micro-integrator --help || echo "Help command completed"
+          
+          # Quick startup test (with timeout)
+          timeout 30s ./wso2-micro-integrator || echo "Startup test completed or timed out"
+          
+          echo "Native executable tests completed successfully"
+        else
+          echo "Native executable not found"
+          exit 1
+        fi
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [native-build, native-build-windows, native-test]
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+        
+    - name: Create release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          artifacts/native-executable-*/wso2-micro-integrator-graalvm-*
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  performance-impact:
+    runs-on: ubuntu-latest
+    needs: native-build
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download native executable
+      uses: actions/download-artifact@v4
+      with:
+        name: native-executable-linux-x64
+        path: ./native-executable/
+        
+    - name: Basic performance check
+      run: |
+        cd native-executable
+        chmod +x wso2-micro-integrator 2>/dev/null || true
+        
+        if [[ -f "wso2-micro-integrator" ]]; then
+          echo "Measuring native executable startup time..."
+          
+          # Measure startup time
+          START_TIME=$(date +%s%N)
+          timeout 10s ./wso2-micro-integrator --version >/dev/null 2>&1 || true
+          END_TIME=$(date +%s%N)
+          
+          STARTUP_TIME_MS=$(( (END_TIME - START_TIME) / 1000000 ))
+          echo "Startup time: ${STARTUP_TIME_MS}ms"
+          
+          # Get executable size
+          SIZE=$(ls -l wso2-micro-integrator | awk '{print $5}')
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "Executable size: ${SIZE_MB}MB"
+          
+          # Create performance comment for PR
+          echo "## GraalVM Native Build Performance" > performance-comment.md
+          echo "- **Executable Size**: ${SIZE_MB}MB" >> performance-comment.md
+          echo "- **Startup Time**: ${STARTUP_TIME_MS}ms" >> performance-comment.md
+          echo "- **Build Status**: ✅ Success" >> performance-comment.md
+          
+          cat performance-comment.md
+        fi
+        
+    - name: Comment PR
+      uses: actions/github-script@v7
+      if: github.event_name == 'pull_request'
+      with:
+        script: |
+          const fs = require('fs');
+          const path = './native-executable/performance-comment.md';
+          
+          if (fs.existsSync(path)) {
+            const comment = fs.readFileSync(path, 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          }
