@@ -2,10 +2,10 @@ name: GraalVM Native Build
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ synapse-ng ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ synapse-ng ]
   schedule:
     # Run weekly on Sunday at 2 AM UTC
     - cron: '0 2 * * 0'
