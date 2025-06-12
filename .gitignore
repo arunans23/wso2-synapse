@@ -48,7 +48,8 @@ hs_err_pid*
 .factorypath
 .project
 .settings
-.springBeans
+# WSO2 Configuration
+.wso2
 .sts4-cache
 
 ## NetBeans
@@ -114,8 +115,8 @@ $RECYCLE.BIN/
 .nfs*
 
 # Application Specific
-## Spring Boot
-spring-shell.log
+# Application Logs
+*.log
 
 ## GraalVM
 graalvm_dumps/

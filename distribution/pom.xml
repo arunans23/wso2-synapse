@@ -54,17 +54,24 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <version>3.2.4</version>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.4.1</version>
                 <configuration>
-                    <mainClass>org.wso2.graalvm.runtime.MicroIntegratorApplication</mainClass>
+                    <createDependencyReducedPom>false</createDependencyReducedPom>
+                    <transformers>
+                        <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                            <mainClass>org.wso2.graalvm.runtime.MicroIntegratorApplication</mainClass>
+                        </transformer>
+                        <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                    </transformers>
                     <finalName>wso2-micro-integrator-graalvm</finalName>
                 </configuration>
                 <executions>
                     <execution>
+                        <phase>package</phase>
                         <goals>
-                            <goal>repackage</goal>
+                            <goal>shade</goal>
                         </goals>
                     </execution>
                 </executions>
@@ -99,28 +106,6 @@
             <id>native</id>
             <build>
                 <plugins>
-                    <!-- Extract Spring Boot JAR for native compilation -->
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-antrun-plugin</artifactId>
-                        <version>3.1.0</version>
-                        <executions>
-                            <execution>
-                                <id>extract-boot-jar</id>
-                                <phase>prepare-package</phase>
-                                <goals>
-                                    <goal>run</goal>
-                                </goals>
-                                <configuration>
-                                    <target>
-                                        <unzip src="${project.build.directory}/wso2-micro-integrator-graalvm.jar" 
-                                               dest="${project.build.directory}/native-image-build" />
-                                    </target>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    
                     <plugin>
                         <groupId>org.graalvm.buildtools</groupId>
                         <artifactId>native-maven-plugin</artifactId>
@@ -136,10 +121,6 @@
                                 <buildArg>--initialize-at-run-time=io.helidon</buildArg>
                                 <buildArg>--enable-url-protocols=http,https</buildArg>
                                 <buildArg>--enable-all-security-services</buildArg>
-                                <buildArg>-cp</buildArg>
-                                <buildArg>${project.build.directory}/native-image-build/BOOT-INF/lib/*:${project.build.directory}/native-image-build/BOOT-INF/classes</buildArg>
-                                <buildArg>-H:ResourceConfigurationFiles=${project.build.directory}/native-image-build/BOOT-INF/classes/resource-config.json</buildArg>
-                                <buildArg>-H:ReflectionConfigurationFiles=${project.build.directory}/native-image-build/BOOT-INF/classes/reflect-config.json</buildArg>
                             </buildArgs>
                         </configuration>
                         <executions>

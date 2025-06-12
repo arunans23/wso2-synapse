@@ -68,6 +68,85 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
             </plugin>
+            
+            <!-- Surefire plugin for unit tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Exclude performance tests from regular test runs -->
+                    <excludes>
+                        <exclude>**/performance/**</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            
+            <!-- Failsafe plugin for performance tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.0.0</version>
+                <configuration>
+                    <includes>
+                        <include>**/performance/**</include>
+                    </includes>
+                    <systemPropertyVariables>
+                        <java.awt.headless>true</java.awt.headless>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Performance testing profile -->
+        <profile>
+            <id>performance-tests</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <!-- Include performance tests when profile is active -->
+                            <includes>
+                                <include>**/performance/**</include>
+                            </includes>
+                            <systemPropertyVariables>
+                                <java.awt.headless>true</java.awt.headless>
+                                <performance.test.enabled>true</performance.test.enabled>
+                            </systemPropertyVariables>
+                            <!-- Increase timeout for performance tests -->
+                            <forkedProcessTimeoutInSeconds>600</forkedProcessTimeoutInSeconds>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        
+        <!-- Stress testing profile with higher loads -->
+        <profile>
+            <id>stress-tests</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <includes>
+                                <include>**/performance/**</include>
+                            </includes>
+                            <systemPropertyVariables>
+                                <java.awt.headless>true</java.awt.headless>
+                                <performance.test.enabled>true</performance.test.enabled>
+                                <stress.test.requests>5000</stress.test.requests>
+                                <stress.test.threads>50</stress.test.threads>
+                            </systemPropertyVariables>
+                            <forkedProcessTimeoutInSeconds>1200</forkedProcessTimeoutInSeconds>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
