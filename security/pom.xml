@@ -22,10 +22,10 @@
             <artifactId>micro-integrator-core</artifactId>
         </dependency>
 
-        <!-- Netty for HTTP handling -->
+        <!-- Helidon WebServer (for security filter) -->
         <dependency>
-            <groupId>io.netty</groupId>
-            <artifactId>netty-all</artifactId>
+            <groupId>io.helidon.webserver</groupId>
+            <artifactId>helidon-webserver</artifactId>
         </dependency>
 
         <!-- Logging -->

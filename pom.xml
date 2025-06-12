@@ -23,7 +23,7 @@
         <native-maven-plugin.version>0.10.1</native-maven-plugin.version>
         
         <!-- Core Dependencies -->
-        <netty.version>4.1.108.Final</netty.version>
+        <helidon.version>4.0.6</helidon.version>
         <jackson.version>2.17.0</jackson.version>
         <slf4j.version>2.0.12</slf4j.version>
         <logback.version>1.5.3</logback.version>
@@ -119,11 +119,11 @@
                 <version>${project.version}</version>
             </dependency>
 
-            <!-- Netty for High-Performance I/O -->
+            <!-- Helidon for High-Performance HTTP Server -->
             <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-bom</artifactId>
-                <version>${netty.version}</version>
+                <groupId>io.helidon</groupId>
+                <artifactId>helidon-bom</artifactId>
+                <version>${helidon.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wso2.graalvm.core.config.IntegrationConfiguration;
 import org.wso2.graalvm.core.threading.VirtualThreadExecutor;
-import org.wso2.graalvm.runtime.server.NettyHttpServer;
+import org.wso2.graalvm.runtime.server.HelidonHttpServer;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -21,7 +21,7 @@ public class MicroIntegratorApplication {
     
     private IntegrationConfiguration config;
     private VirtualThreadExecutor mainExecutor;
-    private NettyHttpServer httpServer;
+    private HelidonHttpServer httpServer;
     private volatile boolean running = false;
     private final CountDownLatch shutdownLatch = new CountDownLatch(1);
     
@@ -110,7 +110,7 @@ public class MicroIntegratorApplication {
     private void startHttpServer() throws Exception {
         logger.info("Starting HTTP server");
         
-        httpServer = new NettyHttpServer(config, mainExecutor);
+        httpServer = new HelidonHttpServer(config, mainExecutor);
         httpServer.start();
         
         logger.info("HTTP server started on port {}", config.getServer().getPort());

@@ -1,13 +1,9 @@
 package org.wso2.graalvm.transports.http;
 
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.codec.http.FullHttpRequest;
-import io.netty.handler.codec.http.HttpMethod;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wso2.graalvm.core.context.IntegrationContext;
 
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
@@ -65,26 +61,6 @@ public class HttpClient {
             request.getUrl(), request.getMethod());
         
         return new HttpResponse(200, "OK", headers, responseBody.getBytes(StandardCharsets.UTF_8));
-    }
-    
-    /**
-     * Creates an HTTP request from a Netty FullHttpRequest.
-     */
-    public static HttpRequest fromNettyRequest(FullHttpRequest nettyRequest, String baseUrl) {
-        String method = nettyRequest.method().name();
-        String url = baseUrl + nettyRequest.uri();
-        
-        Map<String, String> headers = new HashMap<>();
-        nettyRequest.headers().forEach(entry -> 
-            headers.put(entry.getKey(), entry.getValue()));
-        
-        byte[] body = null;
-        if (nettyRequest.content().readableBytes() > 0) {
-            body = new byte[nettyRequest.content().readableBytes()];
-            nettyRequest.content().readBytes(body);
-        }
-        
-        return new HttpRequest(method, url, headers, body);
     }
     
     /**

@@ -30,10 +30,18 @@
             <artifactId>micro-integrator-management</artifactId>
         </dependency>
 
-        <!-- Netty for HTTP Server -->
+        <!-- Helidon WebServer -->
         <dependency>
-            <groupId>io.netty</groupId>
-            <artifactId>netty-all</artifactId>
+            <groupId>io.helidon.webserver</groupId>
+            <artifactId>helidon-webserver</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.http.media</groupId>
+            <artifactId>helidon-http-media-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.webserver</groupId>
+            <artifactId>helidon-webserver-security</artifactId>
         </dependency>
 
         <!-- Logging -->

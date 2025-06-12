@@ -22,12 +22,6 @@
             <artifactId>micro-integrator-core</artifactId>
         </dependency>
 
-        <!-- Netty for HTTP/HTTPS -->
-        <dependency>
-            <groupId>io.netty</groupId>
-            <artifactId>netty-all</artifactId>
-        </dependency>
-
         <!-- JMS API (for JMS transport) -->
         <dependency>
             <groupId>jakarta.jms</groupId>
