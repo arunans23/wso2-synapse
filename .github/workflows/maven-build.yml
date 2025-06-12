@@ -2,9 +2,9 @@ name: Maven Build
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ synapse-ng ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ synapse-ng ]
 
 env:
   MAVEN_OPTS: -Dhttp.keepAlive=false -Dmaven.wagon.http.pool=false
