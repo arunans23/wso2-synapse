@@ -69,9 +69,9 @@ jobs:
         echo "JAVA_HOME: $JAVA_HOME"
         echo "GRAALVM_HOME: $GRAALVM_HOME"
         
-    - name: Build JAR first
+    - name: Build all modules first
       run: |
-        mvn clean package -B -DskipTests -Pnative
+        mvn clean install -B -DskipTests -Dsurefire.failIfNoSpecifiedTests=false
         
     - name: List distribution artifacts
       run: |
@@ -192,9 +192,9 @@ jobs:
         gu install native-image
         native-image.cmd --version
         
-    - name: Build JAR first
+    - name: Build all modules first
       run: |
-        mvn clean package -B -DskipTests -Pnative
+        mvn clean install -B -DskipTests -Dsurefire.failIfNoSpecifiedTests=false
         
     - name: Build native image
       run: |
