@@ -115,7 +115,19 @@ jobs:
         
         echo "Testing native executable startup..."
         # Start the server in background and test if it starts successfully
-        timeout 30s "$EXECUTABLE" &
+        if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+          # macOS doesn't have timeout command, use gtimeout if available or implement alternative
+          if command -v gtimeout &> /dev/null; then
+            gtimeout 30s "$EXECUTABLE" &
+          else
+            # Alternative: start process and kill after timeout manually
+            "$EXECUTABLE" &
+          fi
+        else
+          # Linux has timeout command
+          timeout 30s "$EXECUTABLE" &
+        fi
+        
         SERVER_PID=$!
         
         # Wait a few seconds for startup
@@ -243,7 +255,7 @@ jobs:
         
     - name: Build all modules first
       run: |
-        mvn clean install -B -DskipTests -Dsurefire.failIfNoSpecifiedTests=false
+        mvn clean install -B -DskipTests "-Dsurefire.failIfNoSpecifiedTests=false"
         
     - name: Build native image
       run: |
@@ -313,7 +325,16 @@ jobs:
           
           # Test if the executable can start (server application)
           echo "Starting server in background for startup test..."
-          timeout 30s ./wso2-micro-integrator &
+          # Use a cross-platform approach for timeout
+          if command -v timeout &> /dev/null; then
+            timeout 30s ./wso2-micro-integrator &
+          elif command -v gtimeout &> /dev/null; then
+            gtimeout 30s ./wso2-micro-integrator &
+          else
+            # Fallback: start without timeout and rely on manual kill
+            ./wso2-micro-integrator &
+          fi
+          
           SERVER_PID=$!
           
           # Wait for startup
@@ -382,7 +403,17 @@ jobs:
           
           # Measure startup time by starting server and checking when it's ready
           START_TIME=$(date +%s%N)
-          timeout 30s ./wso2-micro-integrator &
+          
+          # Use cross-platform timeout approach
+          if command -v timeout &> /dev/null; then
+            timeout 30s ./wso2-micro-integrator &
+          elif command -v gtimeout &> /dev/null; then
+            gtimeout 30s ./wso2-micro-integrator &
+          else
+            # Fallback: start without timeout
+            ./wso2-micro-integrator &
+          fi
+          
           SERVER_PID=$!
           
           # Wait for server to start
