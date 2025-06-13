@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+    <!--
+    This file contains suppressions for OWASP Dependency Check false positives.
+    Each suppression should include a comment explaining why it's safe to suppress.
+    -->
+    
+    <!-- Suppress CVEs that are not applicable to our usage -->
+    
+    <!-- Example suppression for a specific CVE -->
+    <!--
+    <suppress>
+        <notes><![CDATA[
+        This CVE is not applicable because we don't use the vulnerable functionality.
+        ]]></notes>
+        <cve>CVE-2021-12345</cve>
+    </suppress>
+    -->
+    
+    <!-- Suppress CVEs for test dependencies that are not shipped with the product -->
+    <suppress>
+        <notes><![CDATA[
+        Test dependencies are not shipped with the product and are only used during development.
+        ]]></notes>
+        <gav regex="true">.*:.*:.*:test.*</gav>
+    </suppress>
+    
+    <!-- Suppress CVEs for provided dependencies -->
+    <suppress>
+        <notes><![CDATA[
+        Provided dependencies are not bundled with the application.
+        ]]></notes>
+        <gav regex="true">.*:.*:.*:provided.*</gav>
+    </suppress>
+    
+</suppressions>

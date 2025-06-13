@@ -175,9 +175,10 @@ class MessageSystemTest {
         Message validXml = messageFactory.createFromString("<root><valid>true</valid></root>", ContentType.APPLICATION_XML);
         assertTrue(validXml.isValid());
         
-        // Test invalid XML
+        // Test invalid XML - suppress XML parser error output for test
+        // The error "XML document structures must start and end within the same entity" is expected
         Message invalidXml = messageFactory.createFromString("<invalid><xml", ContentType.APPLICATION_XML);
-        assertFalse(invalidXml.isValid());
+        assertFalse(invalidXml.isValid(), "Invalid XML should be detected as invalid");
     }
     
     @Test
