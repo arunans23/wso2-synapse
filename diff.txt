@@ -1,0 +1,12 @@
+diff --git a/modules/transports/core/nhttp/src/main/java/org/apache/synapse/transport/passthru/Pipe.java b/modules/transports/core/nhttp/src/main/java/org/apache/synapse/transport/passthru/Pipe.java
+index 73fe7ea168..a13403bd16 100644
+--- a/modules/transports/core/nhttp/src/main/java/org/apache/synapse/transport/passthru/Pipe.java
++++ b/modules/transports/core/nhttp/src/main/java/org/apache/synapse/transport/passthru/Pipe.java
+@@ -672,7 +672,6 @@ public void write(final byte[] b, int off, int len) throws IOException {
+                         return;
+                     } else if (isProducerError()) {
+                         writeCondition.signalAll();
+-                        buffer.clear();
+                         return;
+                     }
+                 } else if (consumerIoControl instanceof NHttpClientConnection) {

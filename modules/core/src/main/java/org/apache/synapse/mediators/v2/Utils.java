@@ -72,6 +72,19 @@ public class Utils {
         return isContinuationTriggeredMediatorWorker != null && isContinuationTriggeredMediatorWorker;
     }
 
+    /**
+     * Check whether the continuation is triggered from iterate mediator or not
+     *
+     * @param synCtx MessageContext
+     * @return true if the continuation is triggered from iterate mediator
+     */
+    public static boolean isContinuationTriggeredFromIterateMediator(MessageContext synCtx) {
+
+        Boolean isContinuationTriggeredMediatorWorker =
+                (Boolean) synCtx.getProperty(SynapseConstants.CONTINUE_FLOW_TRIGGERED_WITHIN_ITERATE_MEDIATOR);
+        return isContinuationTriggeredMediatorWorker != null && isContinuationTriggeredMediatorWorker;
+    }
+
     public static Object convertValue(String value, String type, Log log) {
 
         if (type == null) {

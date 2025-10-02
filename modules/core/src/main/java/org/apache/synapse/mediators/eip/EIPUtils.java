@@ -40,6 +40,10 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.synapse.JSONObjectExtensionException;
 import org.apache.synapse.MessageContext;
 import org.apache.synapse.SynapseException;
+import org.apache.synapse.aspects.flow.statistics.collectors.RuntimeStatisticCollector;
+import org.apache.synapse.continuation.ContinuationStackManager;
+import org.apache.synapse.continuation.SeqContinuationState;
+import org.apache.synapse.mediators.base.SequenceMediator;
 import org.apache.synapse.util.JSONMergeUtils;
 import org.apache.synapse.util.xpath.SynapseJsonPath;
 import org.apache.synapse.util.xpath.SynapseXPath;
@@ -436,6 +440,32 @@ public class EIPUtils {
 
     public static JsonObject convertMapToJsonObj(Object map) {
         return new GsonBuilder().create().toJsonTree(map).getAsJsonObject();
+    }
+
+    public static boolean continueMediationWithoutCallback(MessageContext synCtx) {
+        boolean result;
+        SeqContinuationState seqContinuationState = (SeqContinuationState)
+                ContinuationStackManager.peakContinuationStateStack(synCtx);
+        if (seqContinuationState == null) {
+            return false;
+        }
+        do {
+            seqContinuationState =
+                    (SeqContinuationState) ContinuationStackManager.peakContinuationStateStack(synCtx);
+            if (seqContinuationState != null) {
+                SequenceMediator sequenceMediator =
+                        ContinuationStackManager.retrieveSequence(synCtx, seqContinuationState);
+                //Report Statistics for this continuation call
+                result = sequenceMediator.mediate(synCtx, seqContinuationState);
+                if (RuntimeStatisticCollector.isStatisticsEnabled()) {
+                    sequenceMediator.reportCloseStatistics(synCtx, null);
+                }
+            } else {
+                break;
+            }
+            //for any result close the sequence as it will be handled by the callback method in statistics
+        } while (result && !synCtx.getContinuationStateStack().isEmpty());
+        return false;
     }
 
 }

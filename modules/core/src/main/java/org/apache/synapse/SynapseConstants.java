@@ -548,6 +548,9 @@ public final class SynapseConstants {
     //Enable message building when doing failover
     public static final String BUILD_MESSAGE_ON_FAILOVER = "build.message.on.failover.enable";
 
+    public static final String CONTINUE_SEQUENCE_AFTER_ITERATE_MEDIATOR_COMPLETION =
+            "synapse.iterate.continue.sequence.on.completion";
+
     /**
      * Message content property of incoming transport-in name
      */
@@ -720,6 +723,7 @@ public final class SynapseConstants {
     public static final String OAUTH_TAG = "oauth";
     public static final String SCATTER_MESSAGES = "SCATTER_MESSAGES";
     public static final String CONTINUE_FLOW_TRIGGERED_FROM_MEDIATOR_WORKER = "CONTINUE_FLOW_TRIGGERED_FROM_MEDIATOR_WORKER";
+    public static final String CONTINUE_FLOW_TRIGGERED_WITHIN_ITERATE_MEDIATOR = "CONTINUE_FLOW_TRIGGERED_WITHIN_ITERATE_MEDIATOR";
     public static final String RESPONSE_VARIABLE = "responseVariable";
     public static final String OVERWRITE_BODY = "overwriteBody";
     public static final String ORIGINAL_PAYLOAD = "ORIGINAL_PAYLOAD";

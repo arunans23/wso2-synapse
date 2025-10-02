@@ -25,6 +25,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.synapse.Mediator;
 import org.apache.synapse.SynapseConstants;
+import org.apache.synapse.config.SynapsePropertiesLoader;
 import org.apache.synapse.mediators.eip.splitter.IterateMediator;
 import org.apache.synapse.mediators.eip.Target;
 import org.apache.synapse.util.xpath.SynapseJsonPath;
@@ -33,6 +34,8 @@ import org.jaxen.JaxenException;
 
 import javax.xml.namespace.QName;
 import java.util.Properties;
+
+import static org.apache.synapse.SynapseConstants.CONTINUE_SEQUENCE_AFTER_ITERATE_MEDIATOR_COMPLETION;
 
 /**
  * The &lt;iterate&gt; element is used to split messages in Synapse to smaller messages with only
@@ -168,6 +171,10 @@ public class IterateMediatorFactory extends AbstractMediatorFactory {
         } else {
             handleException("Target for an iterate mediator is required :: missing target");
         }
+
+        boolean continueSequenceAfterCompletion = SynapsePropertiesLoader.
+                getBooleanProperty(CONTINUE_SEQUENCE_AFTER_ITERATE_MEDIATOR_COMPLETION, false);
+        mediator.setContinueSequenceWithoutExternalCall(continueSequenceAfterCompletion);
 
         addAllCommentChildrenToList(elem, mediator.getCommentsList());
 

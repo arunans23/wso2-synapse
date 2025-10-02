@@ -37,6 +37,7 @@ import org.apache.synapse.FaultHandler;
 import org.apache.synapse.ManagedLifecycle;
 import org.apache.synapse.Mediator;
 import org.apache.synapse.MessageContext;
+import org.apache.synapse.SynapseConstants;
 import org.apache.synapse.SynapseException;
 import org.apache.synapse.SynapseLog;
 import org.apache.synapse.aspects.AspectConfiguration;
@@ -48,6 +49,7 @@ import org.apache.synapse.aspects.flow.statistics.data.artifact.ArtifactHolder;
 import org.apache.synapse.commons.json.JsonUtil;
 import org.apache.synapse.config.xml.SynapsePath;
 import org.apache.synapse.continuation.ContinuationStackManager;
+import org.apache.synapse.continuation.SeqContinuationState;
 import org.apache.synapse.core.SynapseEnvironment;
 import org.apache.synapse.core.axis2.Axis2MessageContext;
 import org.apache.synapse.endpoints.Endpoint;
@@ -58,6 +60,7 @@ import org.apache.synapse.mediators.eip.SharedDataHolder;
 import org.apache.synapse.mediators.eip.EIPConstants;
 import org.apache.synapse.mediators.eip.EIPUtils;
 import org.apache.synapse.mediators.eip.Target;
+import org.apache.synapse.mediators.v2.Utils;
 import org.apache.synapse.util.MessageHelper;
 import org.apache.synapse.util.xpath.SynapseJsonPath;
 import org.apache.synapse.util.xpath.SynapseXPath;
@@ -101,6 +104,8 @@ public class IterateMediator extends AbstractMediator implements ManagedLifecycl
     private String id = null;
 
     private SynapseEnvironment synapseEnv;
+
+    private boolean continueSequenceWithoutExternalCall = false;
 
     /**
      * A flag used to check whether attachPath was present in the original synapse configuration
@@ -193,7 +198,7 @@ public class IterateMediator extends AbstractMediator implements ManagedLifecycl
                                  * handler as data are lost with clone message ending execution. So here we
                                  * copy fault stack of clone message context to original message context
                                  */
-                                target.mediate(iteratedMsgCtx);
+                                mediateSequentially(iteratedMsgCtx);
                             } catch (SynapseException synEx) {
                                 copyFaultyIteratedMessage(synCtx, iteratedMsgCtx);
                                 throw synEx;
@@ -260,7 +265,7 @@ public class IterateMediator extends AbstractMediator implements ManagedLifecycl
                              * handler as data are lost with clone message ending execution. So here we
                              * copy fault stack of clone message context to original message context
                              */
-                            target.mediate(iteratedMsgCtx);
+                            mediateSequentially(iteratedMsgCtx);
                         } catch (SynapseException synEx) {
                             copyFaultyIteratedMessage(synCtx, iteratedMsgCtx);
                             throw synEx;
@@ -341,7 +346,15 @@ public class IterateMediator extends AbstractMediator implements ManagedLifecycl
         SequenceMediator branchSequence = target.getSequence();
         boolean isStatisticsEnabled = RuntimeStatisticCollector.isStatisticsEnabled();
         if (!continuationState.hasChild()) {
-            result = branchSequence.mediate(synCtx, continuationState.getPosition() + 1);
+            if (continueSequenceWithoutExternalCall && !continueParent &&
+                    Utils.isContinuationTriggeredFromIterateMediator(synCtx)) {
+                synLog.traceOrDebug("Continuation is triggered from a mediator worker");
+                synCtx.setProperty(SynapseConstants.CONTINUE_FLOW_TRIGGERED_WITHIN_ITERATE_MEDIATOR, false);
+                result = true;
+            } else {
+                synLog.traceOrDebug("Continuation is triggered from a callback, mediating through the sub branch sequence");
+                result = branchSequence.mediate(synCtx, continuationState.getPosition() + 1);
+            }
         } else {
             FlowContinuableMediator mediator =
                     (FlowContinuableMediator) branchSequence.getChild(continuationState.getPosition());
@@ -421,6 +434,10 @@ public class IterateMediator extends AbstractMediator implements ManagedLifecycl
         JsonUtil.getNewJsonPayload(((Axis2MessageContext) newCtx).getAxis2MessageContext(),
                 rootObject.toString(), true, true);
 
+        if (continueSequenceWithoutExternalCall && !continueParent) {
+            // allow sequence to continue after iterate mediator even if call or send is not present
+            newCtx.setProperty(SynapseConstants.SCATTER_MESSAGES, true);
+        }
         // Set isServerSide property in the cloned message context
         ((Axis2MessageContext) newCtx).getAxis2MessageContext().setServerSide(
                 ((Axis2MessageContext) synCtx).getAxis2MessageContext().isServerSide());
@@ -496,12 +513,36 @@ public class IterateMediator extends AbstractMediator implements ManagedLifecycl
 
         // set the envelope and mediate as specified in the target
         newCtx.setEnvelope(newEnvelope);
-
+        if (continueSequenceWithoutExternalCall && !continueParent) {
+            // allow sequence to continue after iterate mediator even if call or send is not present
+            newCtx.setProperty(SynapseConstants.SCATTER_MESSAGES, true);
+        }
         // Set isServerSide property in the cloned message context
         ((Axis2MessageContext) newCtx).getAxis2MessageContext().setServerSide(
                 ((Axis2MessageContext) synCtx).getAxis2MessageContext().isServerSide());
 
         return newCtx;
+    }
+
+    private void mediateSequentially(MessageContext iteratedMsgCtx) {
+        if (continueSequenceWithoutExternalCall && !continueParent) {
+            // if continueSequenceWithoutExternalCall is true we need to clone the stack
+            // and continue after target mediation is complete in sequential mode
+            SeqContinuationState seqContinuationState = (SeqContinuationState) ContinuationStackManager.peakContinuationStateStack(iteratedMsgCtx);
+            if (seqContinuationState == null) {
+                log.error("Sequence Continuation State cannot be found in the stack, hence cannot continue the mediation.");
+            } else {
+                SeqContinuationState clonedSeqContinuationState = ContinuationStackManager.getClonedSeqContinuationState(seqContinuationState);
+                boolean result = target.mediate(iteratedMsgCtx);
+                if (result) {
+                    SequenceMediator sequenceMediator = ContinuationStackManager.retrieveSequence(iteratedMsgCtx, clonedSeqContinuationState);
+                    iteratedMsgCtx.setProperty(SynapseConstants.CONTINUE_FLOW_TRIGGERED_WITHIN_ITERATE_MEDIATOR, true);
+                    sequenceMediator.mediate(iteratedMsgCtx, clonedSeqContinuationState);
+                }
+            }
+        } else {
+            target.mediate(iteratedMsgCtx);
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -569,6 +610,14 @@ public class IterateMediator extends AbstractMediator implements ManagedLifecycl
         isAttachPathPresent = attachPathPresent;
     }
 
+    public boolean isContinueSequenceWithoutExternalCall() {
+        return continueSequenceWithoutExternalCall;
+    }
+
+    public void setContinueSequenceWithoutExternalCall(boolean continueSequenceWithoutExternalCall) {
+        this.continueSequenceWithoutExternalCall = continueSequenceWithoutExternalCall;
+    }
+
     public void init(SynapseEnvironment se) {
 
         synapseEnv = se;
@@ -591,6 +640,9 @@ public class IterateMediator extends AbstractMediator implements ManagedLifecycl
                 }
             }
         }
+        if (continueSequenceWithoutExternalCall && !continueParent) {
+            synapseEnv.updateCallMediatorCount(true);
+        }
     }
 
     public void destroy() {
@@ -612,6 +664,9 @@ public class IterateMediator extends AbstractMediator implements ManagedLifecycl
                     synapseEnv.removeUnavailableArtifactRef(target.getSequenceRef());
                 }
             }
+        }
+        if (continueSequenceWithoutExternalCall && !continueParent) {
+            synapseEnv.updateCallMediatorCount(true);
         }
     }
 
